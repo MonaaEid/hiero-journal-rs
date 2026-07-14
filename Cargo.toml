@@ -1,0 +1,38 @@
+[package]
+name = "hiero-journal"
+version = "0.1.0"
+edition = "2021"
+# Matches hiero-streams; nothing here needs newer std.
+rust-version = "1.82"
+license = "Apache-2.0"
+description = "Audit-grade double-entry journal and financial statements (cash flow, balance position, trial balance) derived from cryptographically-verified Hedera consensus streams"
+repository = "https://github.com/hiero-hackers/hiero-journal-rs"
+readme = "README.md"
+keywords = ["hedera", "hiero", "accounting", "journal", "cash-flow"]
+categories = ["finance"]
+
+[dependencies]
+# The source of truth. default-features off keeps the ETL (parquet) and
+# fetch (ureq) CLI-only deps out of the library build — we only use the
+# pure, no-I/O record/block parser.
+hiero-streams = { path = "../hiero-streams-rs", default-features = false }
+
+[features]
+# Verify block-stream in-band proofs (HIP-1056) at ingest. On by default:
+# the crate's whole premise is verify-then-report, so blocks are verified
+# out of the box. Pulls in the arkworks stack via hiero-streams. Build with
+# --no-default-features for a lean record-only (v6) build with no crypto.
+default = ["block-proofs"]
+block-proofs = ["hiero-streams/block-proofs"]
+
+[lib]
+doctest = false
+
+# Verifying blocks needs the proof-crypto stack; gate the example so a
+# --no-default-features build (record-only) doesn't try to compile it.
+[[example]]
+name = "audit_report"
+required-features = ["block-proofs"]
+
+[dev-dependencies]
+flate2 = "1"

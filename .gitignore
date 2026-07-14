@@ -1,0 +1,11 @@
+# Rust build artifacts
+/target
+
+# Cargo.lock is committed (this crate ships a binary) — do NOT ignore it.
+
+# Generated example output (produced by `cargo run --example audit_report`)
+/audit_report.html
+/*.pdf
+
+# macOS
+.DS_Store
