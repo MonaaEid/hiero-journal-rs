@@ -20,6 +20,18 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          path: hiero-journal-rs
+
+      - name: Checkout hiero-streams-rs
+        uses: actions/checkout@v4
+        with:
+          repository: hiero-hackers/hiero-streams-rs
+          path: hiero-streams-rs
+
+      - name: Create Cargo workspace manifest
+        run: |
+          echo '[workspace]' > Cargo.toml
+          echo 'members = ["hiero-journal-rs","hiero-streams-rs"]' >> Cargo.toml
 
       # hiero-journal builds hiero-streams transitively, whose build.rs
       # compiles protobufs — so protoc is required even though this crate
@@ -56,10 +68,26 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          path: hiero-journal-rs
+
+      - name: Checkout hiero-streams-rs
+        uses: actions/checkout@v4
+        with:
+          repository: hiero-hackers/hiero-streams-rs
+          path: hiero-streams-rs
+
+      - name: Create Cargo workspace manifest
+        run: |
+          echo '[workspace]' > Cargo.toml
+          echo 'members = ["hiero-journal-rs","hiero-streams-rs"]' >> Cargo.toml
+
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           toolchain: "1.82"
+
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - run: cargo check --all-features
+
+      - run: cargo check --workspace --all-features
