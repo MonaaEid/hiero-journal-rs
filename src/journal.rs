@@ -43,6 +43,18 @@ fn supply_account(asset: &Asset) -> String {
     format!("{SUPPLY_PREFIX}{}", asset.label())
 }
 
+fn fungible_asset(token: &str) -> Asset {
+    Asset::FungibleToken {
+        token_id: crate::asset::TokenId::parse(token).unwrap_or_else(|| {
+            crate::asset::TokenId::from_parts(0, 0, 0)
+        }),
+    }
+}
+
+fn is_zero_account(id: &hiero_streams::AccountId) -> bool {
+    id.shard_num == 0 && id.realm_num == 0 && id.account_num == 0
+}
+
 /// What an entry represents, once decomposed from the raw transfer legs.
 /// Every variant here is derivable *from the ledger itself* — this is the
 /// only classification the crate makes, precisely because it's provable.
@@ -209,24 +221,47 @@ impl Journal {
         }
 
         // Token legs carry no fee (fees are HBAR) — book them straight,
-        // tracking each token's residual so we can balance mint/burn.
-        let mut token_residual: BTreeMap<&str, Amount> = BTreeMap::new();
+        // tracking each token/NFT asset's residual so we can balance
+        // mint/burn and one-sided NFT supply changes.
+        let mut token_residual: BTreeMap<Asset, Amount> = BTreeMap::new();
         for leg in &tx.token_transfers {
             if leg.amount == 0 {
                 continue;
             }
             let amount = i128::from(leg.amount);
-            money::add_assign(
-                token_residual.entry(leg.token.as_str()).or_default(),
-                amount,
-            );
+            let asset = fungible_asset(&leg.token);
+            money::add_assign(token_residual.entry(asset).or_default(), amount);
             self.push(
                 &tx,
                 &leg.account,
-                Asset::Token(leg.token.clone()),
+                asset,
                 amount,
                 EntryKind::Transfer,
             );
+        }
+
+        for leg in &tx.nft_transfers {
+            let asset: Asset = leg.asset.into();
+            if !is_zero_account(&leg.sender) {
+                money::add_assign(token_residual.entry(asset).or_default(), -1);
+                self.push(
+                    &tx,
+                    &leg.sender.to_string(),
+                    asset,
+                    -1,
+                    EntryKind::Transfer,
+                );
+            }
+            if !is_zero_account(&leg.receiver) {
+                money::add_assign(token_residual.entry(asset).or_default(), 1);
+                self.push(
+                    &tx,
+                    &leg.receiver.to_string(),
+                    asset,
+                    1,
+                    EntryKind::Transfer,
+                );
+            }
         }
 
         // A token's legs net to zero *unless* supply changed. Only a
@@ -235,7 +270,7 @@ impl Journal {
         // conserves. A residual under any other type is left alone — it
         // surfaces as a conservation break, which is what we want.
         if supply_changing(&tx.tx_type) {
-            for (token, residual) in token_residual {
+            for (asset, residual) in token_residual {
                 if residual == 0 {
                     continue;
                 }
@@ -244,8 +279,7 @@ impl Journal {
                 } else {
                     EntryKind::Burn
                 };
-                let asset = Asset::Token(token.to_string());
-                self.push(&tx, &supply_account(&asset), asset.clone(), -residual, kind);
+                self.push(&tx, &supply_account(&asset), asset, -residual, kind);
             }
         }
     }

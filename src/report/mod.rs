@@ -214,14 +214,14 @@ pub fn subledger_csv(journal: &Journal, account: &str) -> String {
         let bal = running.entry(&e.asset).or_default();
         *bal = money::add(*bal, e.amount);
         let fields = [
-            e.consensus_timestamp.as_str(),
-            e.day.as_str(),
-            e.tx_type.as_str(),
-            &e.result_code.to_string(),
-            e.kind.as_str(),
+            e.consensus_timestamp.clone(),
+            e.day.clone(),
+            e.tx_type.clone(),
+            e.result_code.to_string(),
+            e.kind.as_str().to_string(),
             e.asset.label(),
-            &e.amount.to_string(),
-            &bal.to_string(),
+            e.amount.to_string(),
+            bal.to_string(),
         ];
         for (i, f) in fields.iter().enumerate() {
             if i > 0 {
