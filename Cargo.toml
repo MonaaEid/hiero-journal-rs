@@ -1,6 +1,6 @@
 [package]
 name = "hiero-journal"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 # Matches hiero-streams; nothing here needs newer std.
 rust-version = "1.82"
@@ -14,8 +14,10 @@ categories = ["finance"]
 [dependencies]
 # The source of truth. default-features off keeps the ETL (parquet) and
 # fetch (ureq) CLI-only deps out of the library build — we only use the
-# pure, no-I/O record/block parser.
-hiero-streams = { path = "../hiero-streams-rs", default-features = false }
+# pure, no-I/O record/block parser. 0.3 is the first release with NFT
+# transfer support. (For local hacking against a sibling checkout, add a
+# `[patch.crates-io]` entry pointing at `../hiero-streams-rs`.)
+hiero-streams = { version = "0.3", default-features = false }
 
 [features]
 # Verify block-stream in-band proofs (HIP-1056) at ingest. On by default:

@@ -43,16 +43,15 @@ fn supply_account(asset: &Asset) -> String {
     format!("{SUPPLY_PREFIX}{}", asset.label())
 }
 
+/// Token-transfer legs carry the token id as a string; the parser formats
+/// it from a structured id, so it always parses. If it ever doesn't, the
+/// stream contract is broken — fail loudly rather than book a figure under
+/// a fabricated id, which would silently merge distinct tokens.
 fn fungible_asset(token: &str) -> Asset {
     Asset::FungibleToken {
-        token_id: crate::asset::TokenId::parse(token).unwrap_or_else(|| {
-            crate::asset::TokenId::from_parts(0, 0, 0)
-        }),
+        token_id: crate::asset::TokenId::parse(token)
+            .unwrap_or_else(|| panic!("malformed token id {token:?} in stream")),
     }
-}
-
-fn is_zero_account(id: &hiero_streams::AccountId) -> bool {
-    id.shard_num == 0 && id.realm_num == 0 && id.account_num == 0
 }
 
 /// What an entry represents, once decomposed from the raw transfer legs.
@@ -231,36 +230,26 @@ impl Journal {
             let amount = i128::from(leg.amount);
             let asset = fungible_asset(&leg.token);
             money::add_assign(token_residual.entry(asset).or_default(), amount);
-            self.push(
-                &tx,
-                &leg.account,
-                asset,
-                amount,
-                EntryKind::Transfer,
-            );
+            self.push(&tx, &leg.account, asset, amount, EntryKind::Transfer);
         }
 
+        // NFT legs: each serial is its own asset, so every posting is ±1.
+        // A mint has no sender and a burn/wipe no receiver — the leg is
+        // then one-sided, and the residual it leaves is absorbed by the
+        // supply contra-entry below (or surfaces as a conservation break
+        // under a transaction type that may not change supply).
         for leg in &tx.nft_transfers {
-            let asset: Asset = leg.asset.into();
-            if !is_zero_account(&leg.sender) {
+            let asset = Asset::Nft {
+                token_id: leg.token.into(),
+                serial_number: leg.serial_number,
+            };
+            if let Some(sender) = &leg.sender {
                 money::add_assign(token_residual.entry(asset).or_default(), -1);
-                self.push(
-                    &tx,
-                    &leg.sender.to_string(),
-                    asset,
-                    -1,
-                    EntryKind::Transfer,
-                );
+                self.push(&tx, &sender.to_string(), asset, -1, EntryKind::Transfer);
             }
-            if !is_zero_account(&leg.receiver) {
+            if let Some(receiver) = &leg.receiver {
                 money::add_assign(token_residual.entry(asset).or_default(), 1);
-                self.push(
-                    &tx,
-                    &leg.receiver.to_string(),
-                    asset,
-                    1,
-                    EntryKind::Transfer,
-                );
+                self.push(&tx, &receiver.to_string(), asset, 1, EntryKind::Transfer);
             }
         }
 
@@ -327,7 +316,7 @@ impl Journal {
             .filter(|(_, s)| *s != 0)
             .map(|((ts, asset), residual)| ConservationBreak {
                 consensus_timestamp: ts.to_string(),
-                asset: asset.clone(),
+                asset: *asset,
                 residual,
             })
             .collect()

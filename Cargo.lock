@@ -438,7 +438,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hiero-journal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "hiero-streams",
@@ -447,6 +447,7 @@ dependencies = [
 [[package]]
 name = "hiero-streams"
 version = "0.2.0"
+source = "git+https://github.com/hiero-hackers/hiero-streams-rs?rev=7cb2d545782ffd3578ae67696fee9cb2698b32eb#7cb2d545782ffd3578ae67696fee9cb2698b32eb"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",

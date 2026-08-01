@@ -53,7 +53,7 @@ impl CashMovement {
     pub fn net_by_asset(&self) -> Balances {
         let mut m: Balances = BTreeMap::new();
         for l in &self.lines {
-            money::add_assign(m.entry(l.asset.clone()).or_default(), l.net());
+            money::add_assign(m.entry(l.asset).or_default(), l.net());
         }
         m.retain(|_, v| *v != 0);
         m
@@ -81,7 +81,7 @@ pub fn cash_movement(
         if !in_window(&e.day, from_day, to_day) {
             continue;
         }
-        let slot = buckets.entry((e.kind, e.asset.clone())).or_insert((0, 0));
+        let slot = buckets.entry((e.kind, e.asset)).or_insert((0, 0));
         if e.amount >= 0 {
             money::add_assign(&mut slot.0, e.amount);
         } else {
@@ -130,7 +130,7 @@ pub fn trial_balance(journal: &Journal, from_day: Option<&str>, to_day: Option<&
         if !in_window(&e.day, from_day, to_day) {
             continue;
         }
-        money::add_assign(m.entry(e.asset.clone()).or_default(), e.amount);
+        money::add_assign(m.entry(e.asset).or_default(), e.amount);
     }
     m.retain(|_, v| *v != 0);
     m
@@ -161,7 +161,7 @@ fn opening_balance(journal: &Journal, account: &str, from_day: Option<&str>) -> 
         if e.day.as_str() >= from {
             continue;
         }
-        money::add_assign(bal.entry(e.asset.clone()).or_default(), e.amount);
+        money::add_assign(bal.entry(e.asset).or_default(), e.amount);
     }
     bal.retain(|_, v| *v != 0);
     bal
@@ -179,7 +179,7 @@ fn period_movement(
         if !in_window(&e.day, from, to) {
             continue;
         }
-        money::add_assign(m.entry(e.asset.clone()).or_default(), e.amount);
+        money::add_assign(m.entry(e.asset).or_default(), e.amount);
     }
     m.retain(|_, v| *v != 0);
     m

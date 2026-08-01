@@ -1,12 +1,11 @@
 //! The unit an amount is denominated in. Every amount in the journal is
 //! a signed integer in this asset's *smallest* unit — tinybar for HBAR,
 //! the token's base unit for a fungible token, or 1 for a single NFT
-//! serial. Floating point never touches a
-//! balance; that discipline is what makes the output audit-grade.
+//! serial. Floating point never touches a balance; that discipline is
+//! what makes the output audit-grade.
 
 use crate::money::{self, Amount};
 use crate::token::Decimals;
-use std::fmt::Display;
 use std::fmt;
 
 /// A Hedera token id in `shard.realm.num` form.
@@ -26,11 +25,21 @@ impl TokenId {
         }
     }
 
+    /// Parse `"shard.realm.num"`. Entity id components are non-negative;
+    /// anything else (missing parts, trailing junk, signs) is `None`.
     pub fn parse(s: &str) -> Option<Self> {
         let mut parts = s.split('.');
-        let shard_num = parts.next()?.parse().ok()?;
-        let realm_num = parts.next()?.parse().ok()?;
-        let token_num = parts.next()?.parse().ok()?;
+        // Digits only — `i64::parse` would also accept a leading sign.
+        let mut component = || {
+            let p = parts.next()?;
+            if p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            p.parse::<i64>().ok()
+        };
+        let shard_num = component()?;
+        let realm_num = component()?;
+        let token_num = component()?;
         if parts.next().is_some() {
             return None;
         }
@@ -40,7 +49,11 @@ impl TokenId {
 
 impl fmt::Display for TokenId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}.{}", self.shard_num, self.realm_num, self.token_num)
+        write!(
+            f,
+            "{}.{}.{}",
+            self.shard_num, self.realm_num, self.token_num
+        )
     }
 }
 
@@ -66,7 +79,12 @@ pub enum Asset {
     /// base unit; decimals live off-ledger, so this crate never rescales them.
     FungibleToken { token_id: TokenId },
     /// A non-fungible token serial, identified by token id + serial.
-    Nft { token_id: TokenId, serial_number: u64 },
+    /// Amounts are whole ownership units — every posting is ±1. The serial
+    /// is `i64` exactly as on the wire (valid serials are >= 1).
+    Nft {
+        token_id: TokenId,
+        serial_number: i64,
+    },
 }
 
 impl Asset {
@@ -74,9 +92,7 @@ impl Asset {
     pub fn label(&self) -> String {
         match self {
             Asset::Hbar => "HBAR".to_string(),
-            Asset::FungibleToken { token_id } | Asset::Nft { token_id, .. } => {
-                token_id.to_string()
-            }
+            Asset::FungibleToken { token_id } | Asset::Nft { token_id, .. } => token_id.to_string(),
         }
     }
 
@@ -99,6 +115,7 @@ impl Asset {
     /// Like [`Asset::render`], but scales a token by its decimals when the
     /// registry knows them (e.g. `1_500_000` at 6 decimals → `1.500000`).
     /// Falls back to base units for unknown tokens. HBAR is unaffected.
+    /// NFTs are indivisible, so their whole-unit counts never rescale.
     pub fn render_with(&self, amount: Amount, decimals: &Decimals) -> String {
         match self {
             Asset::Hbar => money::render(amount, HBAR_DECIMALS, " ℏ"),
@@ -106,13 +123,7 @@ impl Asset {
                 Some(d) => money::render(amount, d, &format!(" {token_id}")),
                 None => format!("{amount} {token_id}"),
             },
-            Asset::Nft {
-                token_id,
-                serial_number,
-            } => match decimals.get(&token_id.to_string()) {
-                Some(d) => money::render(amount, d, &format!(" {token_id}#{serial_number}")),
-                None => format!("{amount} {token_id}#{serial_number}"),
-            },
+            Asset::Nft { .. } => self.render(amount),
         }
     }
 }
@@ -121,7 +132,7 @@ impl fmt::Display for Asset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Asset::Hbar => f.write_str("HBAR"),
-            Asset::FungibleToken { token_id } => Display::fmt(token_id, f),
+            Asset::FungibleToken { token_id } => fmt::Display::fmt(token_id, f),
             Asset::Nft {
                 token_id,
                 serial_number,
@@ -130,20 +141,55 @@ impl fmt::Display for Asset {
     }
 }
 
-impl From<hiero_streams::Asset> for Asset {
-    fn from(asset: hiero_streams::Asset) -> Self {
-        match asset {
-            hiero_streams::Asset::Hbar => Asset::Hbar,
-            hiero_streams::Asset::FungibleToken { token_id } => Asset::FungibleToken {
-                token_id: token_id.into(),
-            },
-            hiero_streams::Asset::Nft {
-                token_id,
-                serial_number,
-            } => Asset::Nft {
-                token_id: token_id.into(),
-                serial_number,
-            },
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_id_parses_well_formed_ids() {
+        assert_eq!(
+            TokenId::parse("0.0.123"),
+            Some(TokenId::from_parts(0, 0, 123))
+        );
+        assert_eq!(TokenId::parse("1.2.3"), Some(TokenId::from_parts(1, 2, 3)));
+    }
+
+    #[test]
+    fn token_id_rejects_malformed_ids() {
+        for bad in [
+            "", "0.0", "0.0.1.2", "0.0.x", "0.0.-1", "-1.0.5", "0. 0.1", "0.0.+1",
+        ] {
+            assert_eq!(TokenId::parse(bad), None, "{bad:?} must not parse");
         }
+    }
+
+    #[test]
+    fn token_id_display_round_trips() {
+        let id = TokenId::from_parts(0, 0, 4242);
+        assert_eq!(TokenId::parse(&id.to_string()), Some(id));
+    }
+
+    #[test]
+    fn nft_asset_renders_with_serial() {
+        let nft = Asset::Nft {
+            token_id: TokenId::from_parts(0, 0, 7),
+            serial_number: 12,
+        };
+        assert_eq!(nft.to_string(), "0.0.7#12");
+        assert_eq!(nft.render(1), "1 0.0.7#12");
+        assert_eq!(nft.label(), "0.0.7");
+    }
+
+    #[test]
+    fn nft_render_with_never_rescales() {
+        let nft = Asset::Nft {
+            token_id: TokenId::from_parts(0, 0, 7),
+            serial_number: 12,
+        };
+        // Even if a decimals registry claims a scale for the token id,
+        // an NFT count is indivisible and stays whole.
+        let mut decimals = Decimals::new();
+        decimals.set("0.0.7", 6);
+        assert_eq!(nft.render_with(1, &decimals), "1 0.0.7#12");
     }
 }

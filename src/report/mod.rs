@@ -300,7 +300,7 @@ fn reconcile(journal: &crate::Journal, asset: &Asset) -> Vec<ReconLine> {
                 .filter(|v| **v != 0)
                 .map(|v| ReconLine {
                     account: a.to_string(),
-                    asset: asset.clone(),
+                    asset: *asset,
                     amount: *v,
                 })
         })
