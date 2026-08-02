@@ -43,8 +43,8 @@ pub mod report;
 pub mod statements;
 pub mod token;
 
-pub use asset::Asset;
-pub use balance::Balances;
+pub use asset::{Asset, TokenId};
+pub use balance::{Balances, NftHoldings};
 pub use journal::{ConservationBreak, EntryKind, Journal, LedgerEntry};
 pub use money::Amount;
 pub use report::AssuranceReport;
