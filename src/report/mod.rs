@@ -305,7 +305,7 @@ fn reconcile(journal: &crate::Journal, asset: &Asset) -> Vec<ReconLine> {
                 })
         })
         .collect();
-    lines.sort_by(|a, b| b.amount.cmp(&a.amount));
+    lines.sort_by_key(|l| std::cmp::Reverse(l.amount));
     lines
 }
 
